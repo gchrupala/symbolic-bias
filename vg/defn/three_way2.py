@@ -22,7 +22,7 @@ def step(task, *args):
     loss = task.train_cost(*args)
     task.optimizer.zero_grad()
     loss.backward()
-    _ = nn.utils.clip_grad_norm(task.parameters(), task.config['max_norm'])
+    nn.utils.clip_grad_norm_(task.parameters(), task.config['max_norm'])
     return loss
 
 class SpeechText(nn.Module):
@@ -47,8 +47,7 @@ class SpeechText(nn.Module):
         return (item['audio'], item['input'].astype('int64'))
 
     def test_cost(self, *args):
-        with testing(self):
-            return self.cost(*args)
+        return self.cost(*args)
 
 
 class SpeechImage(nn.Module):
@@ -72,8 +71,8 @@ class SpeechImage(nn.Module):
         return (item['audio'], item['target_v'])
 
     def test_cost(self, *args):
-        with testing(self):
-            return self.cost(*args)
+        result = self.cost(*args)
+        return result
 
 class TextImage(nn.Module):
 
@@ -147,14 +146,16 @@ def encode_images_TextImage(task, imgs, batch_size=128):
                                 numpy.vstack(batch))).cuda()).data.cpu().numpy()
                           for batch in util.grouper(imgs, batch_size) ])
 
-def experiment(net, data, run_config):
-    def valid_loss(name, task):
+def valid_loss(net, name, task, data):
         result = []
-        for item in data[name].iter_valid_batches():
-            args = task.args(item)
-            args = [torch.autograd.Variable(torch.from_numpy(x), volatile=True).cuda() for x in args ]
-            result.append([ x.data.cpu().numpy() for x in task.test_cost(*args) ])
+        with testing(net): #net.eval()
+            for item in data[name].iter_valid_batches():
+                args = task.args(item)
+                args = [torch.autograd.Variable(torch.from_numpy(x)).cuda() for x in args ]
+                result.append(task.test_cost(*args).data.cpu().numpy())
         return result
+
+def experiment(net, data, run_config):
     
     net.cuda()
     net.train()
@@ -178,17 +179,17 @@ def experiment(net, data, run_config):
                 args = task.args(item[name])
                 args = [torch.autograd.Variable(torch.from_numpy(x)).cuda() for x in args ]
               
-
                 loss = task.cost(*args)
+
                 task.optimizer.zero_grad()
                 loss.backward()
-                _ = nn.utils.clip_grad_norm(task.parameters(), task.config['max_norm'])
+                nn.utils.clip_grad_norm_(task.parameters(), task.config['max_norm'])
                 task.optimizer.step()
-                costs[name] += Counter({'cost':loss.data[0], 'N':1})
+                costs[name] += Counter({'cost':loss.data.item(), 'N':1})
                 print(epoch, j, j*data[name].batch_size, name, spk, "train", "".join([str(costs[name]['cost']/costs[name]['N'])]))
 
                 if j % run_config['validate_period'] == 0:
-                    loss = valid_loss(name, task)
+                    loss = valid_loss(net, name, task, data)
                     print(epoch, j, 0, name, "VALID", "valid", "".join([str(numpy.mean(loss))]))
 
 
