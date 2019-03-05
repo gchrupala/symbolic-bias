@@ -76,10 +76,10 @@ def load(path):
 
 @contextlib.contextmanager
 def testing(net):
-    mode = net.training
-    net.eval()
-    yield net
-    net.training = mode
+    with torch.no_grad():
+        net.eval()
+        yield net
+        net.train()
 
 
 def stringsim(a, b):
