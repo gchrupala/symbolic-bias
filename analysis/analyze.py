@@ -81,16 +81,185 @@ def rsa_results():
     for row in ['m1,s2i', 'm6,s2i', 'm6,s2t', 'image']:
         for col in ['mfcc', 'text', 'image']:
             out.append((row, col, S.RSA(sim[row], sim[col])))
-    return out
+    json.dump(make_json_happy(out), open("rsa.json", "w"), indent=2)
 
 
+def phoneme_decoding_results():
+    """Table 5 (tab:phoneme-decoding)"""
+    from sklearn.linear_model import LogisticRegression, SGDClassifier
+    from sklearn.model_selection import train_test_split, GridSearchCV
+    from sklearn.preprocessing import StandardScaler
+    try:
+        data = np.load("phoneme_decoding_data.npy").item()
+    except FileNotFoundError:
+        nets = get_nets()
+        data = phoneme_decoding_data(nets)
+        np.save("phoneme_decoding_data.npy", data)
+    result = {}
+    for rep in data.keys():
+        scaler = StandardScaler()
+        X_train, X_test, y_train, y_test = train_test_split(data[rep]['features'], data[rep]['labels'], test_size=1/2, random_state=123)       
+        X_train = scaler.fit_transform(X_train)
+        X_test  = scaler.transform(X_test)
+        #m = GridSearchCV(LogisticRegression(solver='lbfgs', multi_class='auto', max_iter=200), {'C': [ 10**n for n in range(-1, 1) ]}, cv=3, n_jobs=-1)
+        logging.info("Fitting Logistic Regression for {}".format(rep))
+        m = LogisticRegression(solver="lbfgs", multi_class='auto', max_iter=300, random_state=123, C=1.0)
+        m.fit(X_train, y_train)
+        result[rep] = float(m.score(X_test, y_test)) #dict(score=m.score(X_test, y_test), cv_results=m.cv_results_)
+        print(result[rep])
+    json.dump(make_json_happy(result), open("phoneme-decoding.json", "w"))
 
+def get_nets():
+    import vg.defn.three_way2 as D
+    net_base = load_best_run('{}/s2-t.-s2i2-s2t.-t2s.-t2i.'.format(PREFIX), cond='')
+    net_mt = load_best_run('{}/s2-t1-s2i2-s2t0-t2s0-t2i1'.format(PREFIX), cond='joint')
+    config = dict(TextImage=dict(ImageEncoder=dict(size=1024, size_target=4096),
+                                   lr=0.0002,
+                                   margin_size=0.2,
+                                   max_norm=2.0, 
+                                   TextEncoderTop=dict(size=1024, size_feature=1024, depth=1, size_attn=128)),
+                    SpeechImage=dict(ImageEncoder=dict(size=1024, size_target=4096),
+                                     lr=0.0002,
+                                     margin_size=0.2,
+                                     max_norm=2.0, 
+                                     SpeechEncoderTop=dict(size=1024, size_input=1024, depth=2, size_attn=128)),
+                    SpeechText=dict(TextEncoderTop=dict(size_feature=1024,
+                                                        size=1024,
+                                                        depth=0,
+                                                        size_attn=128),
+                                    SpeechEncoderTop=dict(size=1024,
+                                                          size_input=1024,
+                                                          depth=0,
+                                                          size_attn=128), 
+                                    lr=0.0002,
+                                    margin_size=0.2,
+                                    max_norm=2.0),
+                    
+                    SpeechEncoderBottom=dict(size=1024, depth=2, size_vocab=13, filter_length=6, filter_size=64, stride=2),
+                    TextEncoderBottom=dict(size_feature=net_mt.TextEncoderBottom.size_feature,
+                                           size_embed=128,
+                                           size=1024,
+                                           depth=1)
+                   )
+    net_base = load_best_run('{}/s2-t.-s2i2-s2t.-t2s.-t2i.'.format(PREFIX), cond='')
+    net_mt = load_best_run('{}/s2-t1-s2i2-s2t0-t2s0-t2i1'.format(PREFIX), cond='joint')
+    net_init = D.Net(config).cuda()
+    return [('m6_init', net_init), ('m1', net_base), ('m6', net_mt) ]
+
+def phoneme_decoding_data(nets, alignment_path="../data/flickr8k/dataset.val.fa.json",
+                          dataset_path="../data/flickr8k/dataset.json",
+                          max_size=5000,
+                          directory="."):
+    """Generate data for training a phoneme decoding model."""
+    import vg.flickr8k_provider as dp
+
+    logging.getLogger().setLevel('INFO')
+    logging.info("Loading alignments")
+    data = {}
+    for line in open(alignment_path):
+        item = json.loads(line)
+        data[item['sentid']] = item
+    logging.info("Loading audio features")
+    prov = dp.getDataProvider('flickr8k', root='..', audio_kind='mfcc')
+    val = list(prov.iterSentences(split='val'))
+    data_filter = [ (data[sent['sentid']], sent) for sent in val
+                        if np.all([word.get('start', False) for word in data[sent['sentid']]['words']]) ]
+    data_filter = data_filter[:max_size]
+    data_state =  [phoneme for (utt, sent) in data_filter for phoneme in slices(utt, sent['audio']) ]
+    result = {}
+    logging.info("Extracting MFCC examples")
+    result['mfcc'] = fa_data(data_state)
+    for name, net in nets:
+        result[name] = {}
+        L =  1
+        S =  net.SpeechEncoderBottom.stride
+        logging.info("Extracting recurrent layer states")
+        audio = [ sent['audio'] for utt,sent in data_filter ]
+        states = get_layer_states(net, audio, batch_size=32)
+        layer = 0
+        def aggregate(x):
+                return x[:,layer,:].mean(axis=0)
+        data_state =  [phoneme for i in range(len(data_filter))
+                         for phoneme in slices(data_filter[i][0], states[i], index=lambda x: index(x, stride=S), aggregate=aggregate) ]
+        result[name] = fa_data(data_state)
+    return result
+
+def get_layer_states(net, audios, batch_size=128):
+    import onion.util as util
+    from vg.simple_data import vector_padder
+    """Pass audios through the model and for each audio return the state of each timestep and each layer."""
+    result = []
+    #lens = (np.array(list(map(len, audios))) + net.SpeechEncoderBottom.filter_length) // net.SpeechEncoderBottom.stride
+    lens = inout(np.array(list(map(len, audios))))
+    rs = (r for batch in util.grouper(audios, batch_size) 
+                for r in layer_states(net, torch.from_numpy(vector_padder(batch)).cuda()).cpu().numpy()
+         )
+    for (r,l) in zip(rs, lens):
+        result.append(np.expand_dims(r[-l:,:], axis=1))
+    return result
+
+def inout(L, pad=6, ksize=6, stride=2): # Default Flickr8k model parameters 
+    return np.floor( (L+2*pad-1*(ksize-1)-1)/stride + 1).astype(int)
+
+def index(t, stride=2, size=6):
+    """Return index into the recurrent state of speech model given timestep
+    `t`.
+    See: https://pytorch.org/docs/stable/nn.html#torch.nn.Conv1d
+    """
+    return inout(t//10, pad=size, ksize=size, stride=stride) # sampling audio every 10ms
+
+
+def layer_states(net, audio):
+    #FIXME implement
+    from vg.scorer import testing
+    with testing(net):
+        states = net.SpeechImage.SpeechEncoderBottom(audio)
+    return states
+        
+def fa_data(data_state):
+    y, X = zip(*data_state)
+    X = np.vstack(X)
+    y = np.array(y)
+    # Get rid of NaNs
+    ix = np.isnan(X.sum(axis=1))
+    X = X[~ix]
+    y = y[~ix]
+    return dict(features=X, labels=y)
+
+def slices(utt, rep, index=lambda ms: ms//10, aggregate=lambda x: x.mean(axis=0)):
+    """Return sequence of slices associated with phoneme labels, given an
+       alignment object `utt`, a representation array `rep`, and
+       indexing function `index`, and an aggregating function\
+       `aggregate`.
+
+    """
+    for phoneme in phones(utt):
+        phone, start, end = phoneme
+        assert index(start)<index(end)+1, "Something funny: {} {} {} {}".format(start, end, index(start), index(end))
+        yield (phone, aggregate(rep[index(start):index(end)+1]))
+
+def phones(utt):
+    """Return sequence of phoneme labels associated with start and end
+     time corresponding to the alignment JSON object `utt`.
+    
+    """
+    for word in utt['words']:
+        pos = word['start']
+        for phone in word['phones']:
+            start = pos
+            end = pos + phone['duration']
+            pos = end
+            label = phone['phone'].split('_')[0]
+            if label != 'oov':
+                yield (label, int(start*1000), int(end*1000))
 
          
 
 def load_best_run(spec, cond='joint'):
     _, suffix, epoch = bestrun(spec, suffixes='efg', cond=cond)
-    net = torch.load("{}-{}-{}/model.{}.pkl".format(spec, cond, suffix, epoch))
+    path = "{}-{}-{}/model.{}.pkl".format(spec, cond, suffix, epoch)
+    logging.info("Laoding model from {}".format(path))
+    net = torch.load(path)
     return net
 
 
@@ -170,3 +339,17 @@ def validscores(spec, suffixes, cond='joint'):
         result['medr'].append(data['retrieval']['medr'])
         result['speaker_id'].append(data['speaker_id']['rep'])
     return result
+
+
+def make_json_happy(x):
+    if isinstance(x, np.float32) or isinstance(x, np.float64):
+        return float(x)
+    elif isinstance(x, dict):
+        return {key: make_json_happy(value) for key, value in x.items() }
+    elif isinstance(x, list):
+        return [ make_json_happy(value) for value in x ]
+    elif isinstance(x, tuple):
+        return tuple(make_json_happy(value) for value in x)
+    else:
+        return x
+
