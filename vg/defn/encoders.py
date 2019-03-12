@@ -99,6 +99,40 @@ class SpeechEncoderBottom(nn.Module):
             out = self.Conv(x)
         return out
 
+class SpeechEncoderBottomNoConv(nn.Module):
+    def __init__(self, size_vocab, size, depth=1, dropout_p=0.0):
+        super(SpeechEncoderBottomNoConv, self).__init__()
+        util.autoassign(locals())
+        if self.depth > 0:
+            self.h0 = torch.autograd.Variable(torch.zeros(self.depth, 1, self.size))
+            self.Dropout = nn.Dropout(p=self.dropout_p)
+            self.RNN = nn.GRU(self.size_vocab, self.size, self.depth, batch_first=True)
+
+    def forward(self, x):
+        if self.depth > 0:
+            h0 = self.h0.expand(self.depth, x.size(0), self.size).cuda()
+            out, last = self.RNN(self.Dropout(x), h0)
+        else:
+            out = x
+        return out
+
+class SpeechEncoderBottomBidi(nn.Module):
+    def __init__(self, size_vocab, size, depth=1, dropout_p=0.0):
+        super(SpeechEncoderBottomBidi, self).__init__()
+        util.autoassign(locals())
+        if self.depth > 0:
+            self.Dropout = nn.Dropout(p=self.dropout_p)
+            self.RNN = nn.GRU(self.size_vocab, self.size, self.depth, batch_first=True, bidirectional=True)
+            self.Down = nn.Linear(self.size * 2, self.size)
+
+    def forward(self, x):
+        if self.depth > 0:
+            out, last = self.RNN(self.Dropout(x))
+            out = self.Down(out)
+        else:
+            out = x
+        return out
+
 class SpeechEncoderTop(nn.Module):
     def __init__(self, size_input, size, depth=1, size_attn=512, dropout_p=0.0):
         super(SpeechEncoderTop, self).__init__()
@@ -126,7 +160,33 @@ class SpeechEncoderTop(nn.Module):
             out = x
         return out, l2normalize(self.Attn(out))
     
+class SpeechEncoderTopBidi(nn.Module):
+    def __init__(self, size_input, size, depth=1, size_attn=512, dropout_p=0.0):
+        super(SpeechEncoderTopBidi, self).__init__()
+        util.autoassign(locals())
+        if self.depth > 0:
+            self.Dropout = nn.Dropout(p=self.dropout_p)
+            self.RNN = nn.GRU(self.size_input, self.size, self.depth, batch_first=True, bidirectional=True)
+            self.Down = nn.Linear(self.size * 2, self.size)
+        self.Attn = attention.SelfAttention(self.size, size=self.size_attn)
+        
 
+    def forward(self, x):
+        if self.depth > 0:
+            out, _last = self.RNN(self.Dropout(x))
+            out = self.Down(out)
+        else:
+            out = x
+        return l2normalize(self.Attn(out))
+
+    def states(self, x):
+        if self.depth > 0:
+            out, _last = self.RNN(self.Dropout(x))
+            out = self.Down(out)
+        else:
+            out = x
+        return out, l2normalize(self.Attn(out))
+    
 class ImageEncoder(nn.Module):
     
     def __init__(self, size, size_target):
