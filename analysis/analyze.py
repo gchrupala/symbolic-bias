@@ -189,7 +189,6 @@ def get_layer_states(net, audios, batch_size=128):
     from vg.simple_data import vector_padder
     """Pass audios through the model and for each audio return the state of each timestep and each layer."""
     result = []
-    #lens = (np.array(list(map(len, audios))) + net.SpeechEncoderBottom.filter_length) // net.SpeechEncoderBottom.stride
     lens = inout(np.array(list(map(len, audios))))
     rs = (r for batch in util.grouper(audios, batch_size) 
                 for r in layer_states(net, torch.from_numpy(vector_padder(batch)).cuda()).cpu().numpy()
@@ -197,6 +196,20 @@ def get_layer_states(net, audios, batch_size=128):
     for (r,l) in zip(rs, lens):
         result.append(np.expand_dims(r[-l:,:], axis=1))
     return result
+
+def get_state_stack(net, audios, batch_size=128):
+    import onion.util as util
+    from vg.simple_data import vector_padder
+    """Pass audios through the model and for each audio return the state of each timestep and each layer."""
+    result = []
+    lens = inout(np.array(list(map(len, audios))))
+    rs = (r for batch in util.grouper(audios, batch_size) 
+                for r in state_stack(net, torch.from_numpy(vector_padder(batch)).cuda()).cpu().numpy()
+         )
+    for (r,l) in zip(rs, lens):
+        result.append(r[-l:,:])
+    return result
+
 
 def inout(L, pad=6, ksize=6, stride=2): # Default Flickr8k model parameters 
     return np.floor( (L+2*pad-1*(ksize-1)-1)/stride + 1).astype(int)
@@ -210,12 +223,21 @@ def index(t, stride=2, size=6):
 
 
 def layer_states(net, audio):
-    #FIXME implement
     from vg.scorer import testing
     with testing(net):
         states = net.SpeechImage.SpeechEncoderBottom(audio)
     return states
+
+def state_stack(net, audio):
+    from vg.scorer import testing
+    with testing(net):
+        states_bot = net.SpeechImage.SpeechEncoderBottom.states(audio)
+        states_top = net.SpeechImage.SpeechEncoderTop.states(states_bot[-1])
+    states = torch.cat([states_bot, states_top], dim=0).permute(1, 2, 0, 3) #batch x length x layer x feature
+    return states
         
+
+
 def fa_data(data_state):
     y, X = zip(*data_state)
     X = np.vstack(X)
