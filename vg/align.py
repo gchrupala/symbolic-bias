@@ -7,7 +7,7 @@ resources = gentle.Resources()
 import vg.activations
 import numpy as np
 
-def phonemes_activations(activations, alignment):
+def phoneme_activations(activations, alignment):
     """Return array of phoneme labels and array of corresponding mean-pooled activation states."""
     labels, states = zip(*list(slices(alignment, activations, index=vg.activations.index)))
     return np.array(labels), np.stack(states)
