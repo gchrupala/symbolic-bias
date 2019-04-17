@@ -7,6 +7,23 @@ resources = gentle.Resources()
 import vg.activations
 import numpy as np
 
+def from_audio(modelpath, audiopaths, transcripts):
+    # Align audio files
+    alignments = [ align(audiopath, transcript) for audiopath, transcript in zip(audiopaths, transcripts) ]
+    # Get activations
+    activations = vg.activations.from_audio(modelpath, audiopaths)
+    # Return data
+    labels = []
+    states = []
+    
+    for activation, alignment in zip(activations, alignments):
+        # extract phoneme labels and activations for current utterance
+        y, X = phoneme_activations(activation, alignment)
+        labels.append(y)
+        states.append(X)
+    return np.concatenate(labels), np.concatenate(states)
+
+    
 def phoneme_activations(activations, alignment):
     """Return array of phoneme labels and array of corresponding mean-pooled activation states."""
     labels, states = zip(*list(slices(alignment, activations, index=vg.activations.index)))
