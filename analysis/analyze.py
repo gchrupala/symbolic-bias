@@ -3,10 +3,26 @@ import json
 import torch
 import vg.scorer as S
 import logging
+import pandas as pd
+import json
 
 
 PREFIX= '../experiments'
 
+
+
+def main():
+    print("Table 1 \label{tab:core-results}")
+    f = pd.read_json(json.dumps(valid_results()))
+    print(f[['cond', 'tasks', 's', 't', 's2i', 's2t', 't2s', 't2i', 'recall@10', 'medr']].to_latex())
+
+    print("Table 2 \label{tab:core-results-test}")
+    f = pd.read_json(json.dumps(test_results()))
+    print(f[['cond', 'tasks', 's', 't', 's2i', 's2t', 't2s', 't2i', 'recall@10', 'medr']].to_latex())
+
+    print("Table 3 \label{tab:speaker-inv}")
+    print(inv_results().to_latex())
+    
 def valid_results():
     """Table 1 (tab:core-results)"""
     out = []
@@ -35,12 +51,17 @@ def test_results():
         
 
 def inv_results():
-    """Figure 2 (fig:speaker-inv)"""
-    from subprocess import call
+    """Table 3 (fig:speaker-inv)"""
     data = list(melt(valid_runs()))
-    json.dumps("valid_runs.json")
-    call(["Rscript", "inv_results.R"])
+    R = pd.read_json(json.dumps(data)).groupby(['cond', 'tasks', 's', 't', 's2i', 's2t', 't2s', 't2i']).mean()[['speaker_id']]
+    return pd.concat([R.loc[('', 1, 2, '.', 2, '.', '.','.'):].iloc[0:1],
+                      R.loc[('joint',2,2,1,2,0,0,'.'):].iloc[0:1],
+                      R.loc[('joint',3,2,1,2,0,0,1):].iloc[0:1]])
 
+    
+    #json.dumps("valid_runs.json")
+    #call(["Rscript", "inv_results.R"])
+    
 def rsa_results():
     """Table 3 (tab:rsa)"""
     from sklearn.metrics.pairwise import cosine_similarity
