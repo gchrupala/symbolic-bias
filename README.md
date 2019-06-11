@@ -37,5 +37,10 @@ cd analysis
 python -c 'import analyze; analyze.main()'
 ```
 
+The output should be similar to [analysis/results.tex](analysis/results.tex).
+
 Inspect the definition of this function 
 to see how to compute the results from each table in the paper.
+
+
+
