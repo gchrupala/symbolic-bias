@@ -5,23 +5,33 @@ import vg.scorer as S
 import logging
 import pandas as pd
 import json
-
+import sys
 
 PREFIX= '../experiments'
 
 
 
-def main():
-    print("Table 1 \label{tab:core-results}")
+def main(file=sys.stdout):
+    print("Table 1 \label{tab:core-results}", file=file)
     f = pd.read_json(json.dumps(valid_results()))
-    print(f[['cond', 'tasks', 's', 't', 's2i', 's2t', 't2s', 't2i', 'recall@10', 'medr']].to_latex())
+    print(f[['cond', 'tasks', 's', 't', 's2i', 's2t', 't2s', 't2i', 'recall@10', 'medr']].to_latex(), file=file)
 
-    print("Table 2 \label{tab:core-results-test}")
+    print("Table 2 \label{tab:core-results-test}", file=file)
     f = pd.read_json(json.dumps(test_results()))
-    print(f[['cond', 'tasks', 's', 't', 's2i', 's2t', 't2s', 't2i', 'recall@10', 'medr']].to_latex())
+    print(f[['cond', 'tasks', 's', 't', 's2i', 's2t', 't2s', 't2i', 'recall@10', 'medr']].to_latex(), file=file)
 
-    print("Table 3 \label{tab:speaker-inv}")
-    print(inv_results().to_latex())
+    print("Table 3 \label{tab:speaker-inv}", file=file)
+    print(inv_results().to_latex(), file=file)
+
+    print("Table 4 \label{tab:rsa}", file=file)
+    f = rsa_results()
+    print(f.to_latex(), file=file)
+
+    print("Table 5 \label{tab:phoneme-decoding}", file=file)
+    f = phoneme_decoding_results()
+    print(f.to_latex(), file=file)
+
+    
     
 def valid_results():
     """Table 1 (tab:core-results)"""
@@ -63,7 +73,7 @@ def inv_results():
     #call(["Rscript", "inv_results.R"])
     
 def rsa_results():
-    """Table 3 (tab:rsa)"""
+    """Table 4 (tab:rsa)"""
     from sklearn.metrics.pairwise import cosine_similarity
 
     import vg.flickr8k_provider as dp_f
@@ -97,12 +107,14 @@ def rsa_results():
     logging.info("Computing M6,s2t similarity matrix")
     pred = S.encode_sentences_SpeechText(net, scorer.sentence_data, batch_size=scorer.config['batch_size'])
     sim['m6,s2t'] =  cosine_similarity(pred)
-    out = []
     logging.info("Computing RSA scores")
+    rows = []
+    cols = {'mfcc':[], 'text':[], 'image':[]}
     for row in ['m1,s2i', 'm6,s2i', 'm6,s2t', 'image']:
+        rows.append(row)
         for col in ['mfcc', 'text', 'image']:
-            out.append((row, col, S.RSA(sim[row], sim[col])))
-    json.dump(make_json_happy(out), open("rsa.json", "w"), indent=2)
+            cols[col].append(S.RSA(sim[row], sim[col]))
+    return pd.DataFrame(data=cols, index=rows)
 
 
 def phoneme_decoding_results():
@@ -111,12 +123,12 @@ def phoneme_decoding_results():
     from sklearn.model_selection import train_test_split, GridSearchCV
     from sklearn.preprocessing import StandardScaler
     try:
-        data = np.load("phoneme_decoding_data.npy").item()
+        data = np.load("phoneme_decoding_data.npy", allow_pickle=True).item()
     except FileNotFoundError:
         nets = get_nets()
         data = phoneme_decoding_data(nets)
         np.save("phoneme_decoding_data.npy", data)
-    result = {}
+    result = dict(representation=[], accuracy=[])
     for rep in data.keys():
         scaler = StandardScaler()
         X_train, X_test, y_train, y_test = train_test_split(data[rep]['features'], data[rep]['labels'], test_size=1/2, random_state=123)       
@@ -126,9 +138,10 @@ def phoneme_decoding_results():
         logging.info("Fitting Logistic Regression for {}".format(rep))
         m = LogisticRegression(solver="lbfgs", multi_class='auto', max_iter=300, random_state=123, C=1.0)
         m.fit(X_train, y_train)
-        result[rep] = float(m.score(X_test, y_test)) #dict(score=m.score(X_test, y_test), cv_results=m.cv_results_)
-        print(result[rep])
-    json.dump(make_json_happy(result), open("phoneme-decoding.json", "w"))
+        result['representation'].append(rep)
+        result['accuracy'].append(float(m.score(X_test, y_test)))
+        #print(result[rep])
+    return pd.DataFrame(data=result)
 
 def get_nets():
     import vg.defn.three_way2 as D
