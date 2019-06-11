@@ -30,5 +30,12 @@ tar zxvf data.tgz
 
 ## Usage
 
-Execute function ``main`` in file [analysis/analyze.py](analysis/analyze.py). Inspect thde definition of this function 
-to see how to compute the results from a each table in the paper.
+Execute function ``main`` in file [analysis/analyze.py](analysis/analyze.py). 
+
+```
+cd analysis
+python -c 'import analyze; analyze.main()'
+```
+
+Inspect the definition of this function 
+to see how to compute the results from each table in the paper.
