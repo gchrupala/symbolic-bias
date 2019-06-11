@@ -1,0 +1,67 @@
+Table 1 \label{tab:core-results}
+\begin{tabular}{llrrlrlllrr}
+\toprule
+{} &      cond &  tasks &  s &  t &  s2i & s2t & t2s & t2i &  recall@10 &       medr \\
+\midrule
+0  &           &      1 &  2 &  . &    2 &   . &   . &   . &   0.218333 &  63.833333 \\
+1  &     joint &      2 &  2 &  1 &    2 &   0 &   0 &   . &   0.279200 &  42.333333 \\
+2  &  disjoint &      2 &  2 &  1 &    2 &   0 &   0 &   . &   0.279867 &  41.333333 \\
+3  &     joint &      3 &  2 &  1 &    1 &   0 &   0 &   1 &   0.280467 &  43.000000 \\
+4  &     joint &      3 &  2 &  1 &    1 &   1 &   1 &   1 &   0.265600 &  44.333333 \\
+5  &     joint &      3 &  2 &  1 &    2 &   0 &   0 &   1 &   0.281267 &  39.666667 \\
+6  &     joint &      3 &  2 &  1 &    2 &   1 &   1 &   1 &   0.269933 &  44.333333 \\
+7  &     joint &      3 &  4 &  1 &    0 &   0 &   0 &   0 &   0.254600 &  48.333333 \\
+8  &  disjoint &      3 &  2 &  1 &    1 &   0 &   0 &   1 &   0.275333 &  42.833333 \\
+9  &  disjoint &      3 &  2 &  1 &    1 &   1 &   1 &   1 &   0.257400 &  49.833333 \\
+10 &  disjoint &      3 &  2 &  1 &    2 &   0 &   0 &   1 &   0.279600 &  41.666667 \\
+11 &  disjoint &      3 &  2 &  1 &    2 &   1 &   1 &   1 &   0.252067 &  50.666667 \\
+12 &  disjoint &      3 &  4 &  1 &    0 &   0 &   0 &   0 &   0.223133 &  59.333333 \\
+\bottomrule
+\end{tabular}
+
+Table 2 \label{tab:core-results-test}
+\begin{tabular}{llrrlrlllrr}
+\toprule
+{} &   cond &  tasks &  s &  t &  s2i & s2t & t2s & t2i &  recall@10 &  medr \\
+\midrule
+0 &        &      1 &  2 &  . &    2 &   . &   . &   . &     0.2442 &    51 \\
+1 &  joint &      3 &  2 &  1 &    2 &   0 &   0 &   1 &     0.2958 &    34 \\
+\bottomrule
+\end{tabular}
+
+Table 3 \label{tab:speaker-inv}
+\begin{tabular}{llllllllr}
+\toprule
+      &   &   &   &   &   &   &   &  speaker\_id \\
+cond & tasks & s & t & s2i & s2t & t2s & t2i &             \\
+\midrule
+      & 1 & 2 & . & 2 & . & . & . &    0.296800 \\
+joint & 2 & 2 & 1 & 2 & 0 & 0 & . &    0.101067 \\
+      & 3 & 2 & 1 & 2 & 0 & 0 & 1 &    0.084533 \\
+\bottomrule
+\end{tabular}
+
+Table 4 \label{tab:rsa}
+\begin{tabular}{lrrr}
+\toprule
+{} &   mfcc &   text &  image \\
+\midrule
+m1,s2i &  0.043 &  0.194 &  0.187 \\
+m6,s2i &  0.030 &  0.212 &  0.222 \\
+m6,s2t &  0.099 &  0.243 &  0.105 \\
+image  &  0.008 &  0.083 &  1.000 \\
+\bottomrule
+\end{tabular}
+
+Table 5 \label{tab:phoneme-decoding}
+\begin{tabular}{llr}
+\toprule
+{} & representation &  accuracy \\
+\midrule
+0 &           mfcc &  0.283930 \\
+1 &        m6\_init &  0.495788 \\
+2 &             m1 &  0.527684 \\
+3 &             m6 &  0.578318 \\
+\bottomrule
+\end{tabular}
+
