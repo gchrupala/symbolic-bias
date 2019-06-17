@@ -5,7 +5,6 @@ random.seed(seed)
 numpy.random.seed(seed)
 
 import vg.simple_data as sd
-import vg.experiment as E
 import vg.flickr8k_provider as dp_f
 
 import vg.defn.three_way2 as D
